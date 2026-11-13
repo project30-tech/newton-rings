@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Newton’s Rings Simulator</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f6f7f9;--card:#fff;--fg:#1b1f27;--mut:#5d6675;--line:#d9dde4;--acc:#2f5fd0;--grid:#e6e9ef}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151b;--card:#1b2029;--fg:#e8ebf1;--mut:#9aa4b5;--line:#2c3340;--acc:#7aa2ff;--grid:#272d39}}
+:root[data-theme="dark"]{--bg:#12151b;--card:#1b2029;--fg:#e8ebf1;--mut:#9aa4b5;--line:#2c3340;--acc:#7aa2ff;--grid:#272d39}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:14px}
+h1{font-size:1.3rem;margin:0 0 2px}h2{font-size:1rem;margin:0 0 8px}
+.sub{color:var(--mut);margin:0 0 14px;font-size:.9rem}
+.grid{display:grid;gap:14px;grid-template-columns:minmax(0,1fr);max-width:1100px;margin:auto}
+@media(min-width:860px){.grid{grid-template-columns:minmax(0,420px) minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+canvas{width:100%;display:block;border-radius:8px}
+#ring{background:#000;max-width:420px;margin:0 auto 12px}
+label{display:flex;justify-content:space-between;gap:8px;font-size:.88rem;margin-top:10px}
+label b{color:var(--acc);font-weight:600;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--acc)}
+select,button{font:inherit;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+button{cursor:pointer}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.row label{margin:0;align-items:center}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.85rem;font-variant-numeric:tabular-nums}
+th,td{padding:4px 8px;text-align:right;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:600}
+.res{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-top:10px}
+.res div{background:var(--bg);border-radius:8px;padding:8px 10px;font-size:.82rem;color:var(--mut)}
+.res strong{display:block;font-size:1.05rem;color:var(--fg)}
+pre{margin:0;white-space:pre-wrap;font:.85rem/1.55 ui-monospace,Menlo,Consolas,monospace;color:var(--fg)}
+.right{display:grid;gap:14px;align-content:start}
+</style>
+</head>
+<body>
+<h1>Newton’s Rings Simulator</h1>
+<p class="sub">Interference between a plano-convex lens and a flat glass plate. Change the parameters and watch the rings, readings and graphs update.</p>
+<div class="grid">
+ <div class="card">
+  <canvas id="ring" width="380" height="380"></canvas>
+  <label>Light source<select id="mode"><option value="mono">Monochromatic</option><option value="white">White light</option></select></label>
+  <label>Observation<select id="view"><option value="r">Reflected (dark centre)</option><option value="t">Transmitted (bright centre)</option></select></label>
+  <label>Wavelength λ <b id="lamV"></b></label><input type="range" id="lam" min="400" max="700" step="1" value="589">
+  <label>Radius of curvature R <b id="RV"></b></label><input type="range" id="R" min="0.5" max="5" step="0.05" value="1">
+  <label>Refractive index μ of film <b id="muV"></b></label><input type="range" id="mu" min="1" max="1.6" step="0.01" value="1">
+  <label>Air gap offset d (lens lifted) <b id="dV"></b></label><input type="range" id="d" min="0" max="3" step="0.01" value="0">
+  <div class="row">
+   <label><input type="checkbox" id="anim"> Animate lens lift</label>
+   <label><input type="checkbox" id="mark" checked> Mark dark rings</label>
+  </div>
+  <div class="row">
+   <label><input type="checkbox" id="noise"> Add reading error (±0.4%)</label>
+   <button id="renoise">New readings</button>
+  </div>
+ </div>
+ <div class="right">
+  <div class="card">
+   <h2>Dark ring readings (microscope table)</h2>
+   <div class="scroll"><table id="tbl"></table></div>
+   <div class="res" id="res"></div>
+  </div>
+  <div class="card"><h2>Graph: D² versus ring number</h2><canvas id="g1" width="520" height="270"></canvas></div>
+  <div class="card"><h2>Graph: intensity versus radius</h2><canvas id="g2" width="520" height="220"></canvas></div>
+  <div class="card"><h2>Refractive index of a liquid (air film vs liquid film)</h2><div class="scroll"><table id="liqtbl"></table></div><div class="res" id="liqres"></div></div>
+  <div class="card"><h2>Formulas used</h2>
+<pre>Path difference (reflected) = 2·μ·t + λ/2, with t = d + r²/(2R)
+Dark ring (reflected):  r_n² = R·(n·λ/μ − 2d)
+Diameter:               D_n² = 4·n·λ·R/μ  (when d = 0)
+Slope of D² vs n:       s = 4·λ·R/μ
+Radius of curvature:    R = s·μ / (4·λ)
+p-method:               R = (D²_(n+p) − D²_n)·μ / (4·p·λ)
+Liquid index (same ring n):  μ = D²_air / D²_liquid
+Liquid index (p-method):     μ = (D²_(n+p) − D²_n)_air / (D²_(n+p) − D²_n)_liquid
+Transmitted light gives the complementary pattern (bright centre).</pre></div>
+ </div>
+</div>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var N=380,FOV=4; // field of view radius in mm
+var cv=$('ring'),cx=cv.getContext('2d'),img=cx.createImageData(N,N);
+var r2=new Float32Array(N*N),inside=new Uint8Array(N*N);
+for(var y=0;y<N;y++)for(var x=0;x<N;x++){var dx=(x-N/2+.5)*2*FOV/N,dy=(y-N/2+.5)*2*FOV/N,i=y*N+x;r2[i]=dx*dx+dy*dy;inside[i]=r2[i]<=FOV*FOV?1:0}
+function wl2rgb(w){var r=0,g=0,b=0;
+ if(w<440){r=(440-w)/60;b=1}else if(w<490){g=(w-440)/50;b=1}else if(w<510){g=1;b=(510-w)/20}
+ else if(w<580){r=(w-510)/70;g=1}else if(w<645){r=1;g=(645-w)/65}else{r=1}
+ var f=w<420?.3+.7*(w-380)/40:(w>700?.3+.7*(780-w)/80:1);
+ return [Math.pow(r*f,.8),Math.pow(g*f,.8),Math.pow(b*f,.8)]}
+var P={},noiseArr=[],noiseA=[],tick=0,tStart=performance.now();
+function newNoise(){noiseA=[];for(var j=0;j<10;j++){var a=Math.random()||1e-9,b=Math.random();noiseA.push(Math.sqrt(-2*Math.log(a))*Math.cos(2*Math.PI*b)*0.004/1.6)}noiseArr=[];for(var i=0;i<10;i++){var u=Math.random()||1e-9,v=Math.random();noiseArr.push(Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)*0.004/1.6)}}
+newNoise();
+function read(){
+ P.mode=$('mode').value;P.trans=$('view').value==='t';P.lam=+$('lam').value;P.R=+$('R').value;P.mu=+$('mu').value;P.d=+$('d').value;
+ P.lamEff=P.mode==='white'?550:P.lam;
+ $('lam').disabled=P.mode==='white';
+ $('lamV').textContent=P.mode==='white'?'white (calc. uses 550 nm)':P.lam+' nm';
+ $('RV').textContent=P.R.toFixed(2)+' m';
+ $('muV').textContent=P.mu.toFixed(2)+(P.mu===1?' (air)':P.mu===1.33?' (water)':'');
+ $('dV').textContent=P.d.toFixed(2)+' µm';
+}
+function samples(){
+ var s=[];
+ if(P.mode==='mono'){var c=wl2rgb(P.lam);s.push({a:2*Math.PI*P.mu/(P.lam*1e-9),c:c});return {s:s,n:[1,1,1]}}
+ var n=[0,0,0];
+ for(var w=400;w<=700;w+=15){var c=wl2rgb(w);s.push({a:2*Math.PI*P.mu/(w*1e-9),c:c});n[0]+=c[0];n[1]+=c[1];n[2]+=c[2]}
+ return {s:s,n:n}}
+function inten(phi){var v=Math.sin(phi);v*=v;return P.trans?1-v:v}
+function drawRings(){
+ var sp=samples(),S=sp.s,d=P.d*1e-6,k=1/(2*P.R)*1e-6,d0=img.data;
+ for(var i=0;i<N*N;i++){
+  var o=i*4;
+  if(!inside[i]){d0[o]=d0[o+1]=d0[o+2]=0;d0[o+3]=255;continue}
+  var t=d+r2[i]*k,R=0,G=0,B=0;
+  for(var j=0;j<S.length;j++){var I=inten(S[j].a*t),c=S[j].c;R+=I*c[0];G+=I*c[1];B+=I*c[2]}
+  d0[o]=255*Math.min(1,R/sp.n[0]);d0[o+1]=255*Math.min(1,G/sp.n[1]);d0[o+2]=255*Math.min(1,B/sp.n[2]);d0[o+3]=255}
+ cx.putImageData(img,0,0);
+ var pxmm=N/(2*FOV);
+ if($('mark').checked){
+  cx.save();cx.strokeStyle='rgba(255,255,255,.55)';cx.fillStyle='#fff';cx.font='11px system-ui';cx.setLineDash([3,3]);
+  var rows=rings(14);
+  for(var q=0;q<rows.length;q++){var r=Math.sqrt(rows[q].r2);if(r>FOV*0.98)break;
+   cx.beginPath();cx.arc(N/2,N/2,r*pxmm,0,6.2832);cx.stroke();
+   if(q%2===0||rows.length<8)cx.fillText(rows[q].n,N/2+r*pxmm*0.707+3,N/2-r*pxmm*0.707-3)}
+  cx.restore()}
+ cx.fillStyle='#fff';cx.fillRect(12,N-18,pxmm,3);cx.font='11px system-ui';cx.fillText('1 mm',12,N-24);
+}
+// dark ring list: n, r² (mm²)
+function rings(cnt){
+ var off=P.trans?.5:0,l=P.lamEff*1e-9,nmin=Math.floor(2*P.d*1e-6*P.mu/l+off)+1,out=[];
+ for(var i=0;i<cnt;i++){var n=nmin+i,r2m=P.R*((n-off)*l/P.mu-2*P.d*1e-6);if(r2m<=0)continue;out.push({n:n-(P.trans?0:0),r2:r2m*1e6})}
+ return out}
+function fit(x,y){var n=x.length,sx=0,sy=0,sxy=0,sxx=0;
+ for(var i=0;i<n;i++){sx+=x[i];sy+=y[i];sxy+=x[i]*y[i];sxx+=x[i]*x[i]}
+ var m=(n*sxy-sx*sy)/(n*sxx-sx*sx);return {m:m,c:(sy-m*sx)/n}}
+var table=[];
+function calc(){
+ var rs=rings(10),h='<tr><th>k</th><th>Ring n</th><th>D (mm)</th><th>D² (mm²)</th></tr>',ks=[],D2=[];
+ table=[];
+ for(var i=0;i<rs.length;i++){var D=2*Math.sqrt(rs[i].r2)*(1+(noiseArr[i]||0)*($('noise').checked?1:0)),dd=D*D;
+  ks.push(i+1);D2.push(dd);table.push({k:i+1,n:rs[i].n,D:D,D2:dd});
+  h+='<tr><td>'+(i+1)+'</td><td>'+rs[i].n+'</td><td>'+D.toFixed(3)+'</td><td>'+dd.toFixed(3)+'</td></tr>'}
+ $('tbl').innerHTML=h;
+ var f=fit(ks,D2),l=P.lamEff*1e-9,Rc=f.m*1e-6*P.mu/(4*l);
+ var pm=D2[9]-D2[3],Rp=pm*1e-6*P.mu/(4*6*l);
+ var er=function(v){return (100*(v-P.R)/P.R).toFixed(2)+'% error'};
+ $('res').innerHTML='<div>Set R<strong>'+P.R.toFixed(3)+' m</strong>actual value</div>'+
+  '<div>Slope of D² vs k<strong>'+f.m.toFixed(4)+' mm²</strong>theory '+(4*l*P.R/P.mu*1e6).toFixed(4)+'</div>'+
+  '<div>R from graph slope<strong>'+Rc.toFixed(3)+' m</strong>'+er(Rc)+'</div>'+
+  '<div>R by p-method (p = 6)<strong>'+Rp.toFixed(3)+' m</strong>'+er(Rp)+'</div>';
+ return {k:ks,y:D2,f:f}}
+function liquid(){
+ var l=P.lamEff*1e-9,t=$('liqtbl'),o=$('liqres');
+ if(P.mu<=1.001){t.innerHTML='';o.innerHTML='<div>Set the film refractive index μ above 1.00 (water 1.33, glycerine 1.47) to use it as the liquid.</div>';return}
+ var nz=$('noise').checked?1:0,h='<tr><th>n</th><th>D air (mm)</th><th>D liquid (mm)</th><th>D² air / D² liquid</th></tr>',n,Da=[],Dl=[],ks=[],ya=[],yl=[];
+ for(n=1;n<=10;n++){
+  var da=2*Math.sqrt(P.R*n*l*1e6)*(1+nz*noiseA[n-1]),dl=2*Math.sqrt(P.R*n*l/P.mu*1e6)*(1+nz*noiseArr[n-1]);
+  Da.push(da*da);Dl.push(dl*dl);ks.push(n);
+  h+='<tr><td>'+n+'</td><td>'+da.toFixed(3)+'</td><td>'+dl.toFixed(3)+'</td><td>'+(da*da/(dl*dl)).toFixed(3)+'</td></tr>'}
+ t.innerHTML=h;
+ var mp=(Da[9]-Da[3])/(Dl[9]-Dl[3]),ms=fit(ks,Da).m/fit(ks,Dl).m,e=function(v){return (100*(v-P.mu)/P.mu).toFixed(2)+'% error'};
+ o.innerHTML='<div>Actual μ<strong>'+P.mu.toFixed(3)+'</strong>value set in the slider</div>'+
+  '<div>μ by p-method (n = 10 and 4)<strong>'+mp.toFixed(3)+'</strong>'+e(mp)+'</div>'+
+  '<div>μ from slope ratio<strong>'+ms.toFixed(3)+'</strong>'+e(ms)+'</div>'}
+function C(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function axes(c,w,h,xmax,ymax,xl,yl){
+ var L=52,B=34,T=12,Rr=14,pw=w-L-Rr,ph=h-T-B;
+ c.clearRect(0,0,w,h);c.font='11px system-ui';c.fillStyle=C('--mut');c.strokeStyle=C('--grid');c.lineWidth=1;
+ for(var i=0;i<=5;i++){var y=T+ph-ph*i/5,x=L+pw*i/5;
+  c.beginPath();c.moveTo(L,y);c.lineTo(L+pw,y);c.moveTo(x,T);c.lineTo(x,T+ph);c.stroke();
+  c.textAlign='right';c.fillText((ymax*i/5).toPrecision(2),L-6,y+4);
+  c.textAlign='center';c.fillText((xmax*i/5).toFixed(xmax<=5?1:0),x,T+ph+14)}
+ c.fillStyle=C('--fg');c.textAlign='center';c.fillText(xl,L+pw/2,h-4);
+ c.save();c.translate(12,T+ph/2);c.rotate(-Math.PI/2);c.fillText(yl,0,0);c.restore();
+ return {L:L,T:T,pw:pw,ph:ph,X:function(v){return L+pw*v/xmax},Y:function(v){return T+ph-ph*v/ymax}}}
+function graph1(r){
+ var c=$('g1').getContext('2d'),ymax=Math.max.apply(null,r.y)*1.1,a=axes(c,520,270,10,ymax,'ring number k','D² (mm²)');
+ c.strokeStyle=C('--acc');c.lineWidth=1.5;c.beginPath();c.moveTo(a.X(0),a.Y(Math.max(0,r.f.c)));c.lineTo(a.X(10),a.Y(r.f.m*10+r.f.c));c.stroke();
+ c.fillStyle=C('--acc');
+ for(var i=0;i<r.k.length;i++){c.beginPath();c.arc(a.X(r.k[i]),a.Y(r.y[i]),4,0,6.2832);c.fill()}
+ c.fillStyle=C('--fg');c.textAlign='left';c.fillText('best-fit slope = '+r.f.m.toFixed(4)+' mm² per ring',a.L+8,a.T+14)}
+function graph2(){
+ var c=$('g2').getContext('2d'),a=axes(c,520,220,FOV,1,'radius r (mm)','relative intensity'),sp=samples(),d=P.d*1e-6;
+ c.strokeStyle=C('--acc');c.lineWidth=1.5;c.beginPath();
+ for(var i=0;i<=400;i++){var r=FOV*i/400,t=d+r*r*1e-6/(2*P.R),s=0;
+  for(var j=0;j<sp.s.length;j++)s+=inten(sp.s[j].a*t);
+  s/=sp.s.length;i?c.lineTo(a.X(r),a.Y(s)):c.moveTo(a.X(r),a.Y(s))}
+ c.stroke()}
+function draw(){read();drawRings();var r=calc();graph1(r);graph2();liquid()}
+var ids=['mode','view','lam','R','mu','d','mark','noise'];
+ids.forEach(function(i){$(i).addEventListener('input',draw)});
+$('renoise').addEventListener('click',function(){newNoise();draw()});
+$('anim').addEventListener('change',function(){$('d').disabled=this.checked;if(!this.checked)draw()});
+function loop(now){
+ if($('anim').checked){var ph=(now-tStart)/1000*0.9;$('d').value=(1.5-1.5*Math.cos(ph)).toFixed(3);draw()}
+ requestAnimationFrame(loop)}
+draw();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
